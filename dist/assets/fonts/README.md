@@ -1,3 +1,3 @@
 # Tilda Sans
 
-`TildaSans-VF.ttf` — вариативный шрифт Tilda Sans, предоставленный владельцем проекта для лендинга Taby. Подключение находится в `dist/refinements.css`.
+`TildaSans-VF.woff2` — вариативный шрифт Tilda Sans для страницы. Рядом лежит исходный `TildaSans-VF.ttf` как запасной формат. Подключение находится в `dist/refinements.css`.
