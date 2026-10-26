@@ -3769,3 +3769,28 @@ html.no-js .module-progress>a {
     opacity: 1;
   }
 }
+
+.ui-shot {
+  padding: 0;
+  min-height: 0;
+  background: #0d1120;
+  line-height: 0;
+}
+.ui-shot > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.module-figure .ui-shot,
+.scroll-ready .module-figure .ui-shot,
+.hero-app-scroll > .ui-shot {
+  padding: 0;
+  min-height: 0;
+}
+.dialog-scroll .ui-shot {
+  width: var(--shot-w, 1192px);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
