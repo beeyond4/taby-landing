@@ -322,32 +322,67 @@ function bootProduct() {
     return node;
   }
 
+  function measureCss(property, value) {
+    const probe = document.createElement('div');
+    probe.style.cssText = `position:absolute;visibility:hidden;pointer-events:none;${property}:${value}`;
+    document.documentElement.appendChild(probe);
+    const size = probe.getBoundingClientRect().height;
+    probe.remove();
+    return size;
+  }
+
+  function floatingHeaderLane() {
+    const safe = measureCss('height', 'env(safe-area-inset-top, 0px)');
+    // Parked floating header: phone is 12px + 58px, tablet is 14px + 72px.
+    const parked = innerWidth <= 580 ? 70 : 86;
+    return Math.round(safe + parked + 16);
+  }
+
+  function smallViewportHeight() {
+    return measureCss('height', '100svh') || innerHeight;
+  }
+
   function configureScroll() {
     scrollTarget = null;
     const content = frame();
     content.style.transform = '';
     content.style.width = '';
+    content.style.height = '';
+    content.style.transformOrigin = '';
     stage.style.height = '';
     stage.style.zoom = '';
-    // Pin on a desktop window even when the mock is taller than the viewport.
-    enhanced = innerWidth >= 900 && innerHeight >= 560;
+    // Wider than 900px keeps the desktop fit. Narrower screens pin a stage that
+    // fills the viewport under the header; the halves are laid out in CSS.
+    const desktopFit = innerWidth > 900;
+    enhanced = innerHeight >= 560;
     scene.classList.toggle('scroll-ready', enhanced);
     if (enhanced) {
-      const available = Math.max(480, innerHeight - 24);
+      // The floating header hides and shows while this section is pinned.
+      // Measure its parked size, not its current animated box, so the stage
+      // keeps one top edge and a clear lane above it.
+      const narrowTop = desktopFit ? 0 : floatingHeaderLane();
+      const available = desktopFit
+        ? Math.max(480, innerHeight - 24)
+        : Math.max(320, smallViewportHeight() - narrowTop - 12);
       let natural = content.getBoundingClientRect().height;
       let scale = Math.min(1, available / Math.max(natural, 1));
       const fitted = scale < 0.995;
-      scene.classList.toggle('is-fitted', fitted);
-      if (fitted) {
+      scene.classList.toggle('is-fitted', desktopFit && fitted);
+      if (fitted && desktopFit) {
         content.style.width = `${100 / scale}%`;
         natural = content.getBoundingClientRect().height;
         scale = Math.min(1, available / Math.max(natural, 1));
         content.style.width = `${100 / scale}%`;
         content.style.transform = `scale(${scale})`;
         stage.style.height = `${Math.ceil(natural * scale)}px`;
+      } else if (!desktopFit) {
+        content.style.height = '100%';
+        stage.style.height = `${Math.round(available)}px`;
       }
       const stageHeight = stage.getBoundingClientRect().height;
-      const top = Math.max(12, (innerHeight - stageHeight) / 2);
+      const top = desktopFit
+        ? Math.max(12, (innerHeight - stageHeight) / 2)
+        : narrowTop;
       scrollStep = Math.max(480, innerHeight * 0.75);
       scene.style.setProperty('--sticky-top', `${top}px`);
       scene.style.height = `${stageHeight + (panels.length - 1) * scrollStep}px`;
@@ -1007,12 +1042,20 @@ function bootFlow() {
 
   const clip = canvas.parentElement;
 
+  function heroLiftPx() {
+    const hero = document.querySelector('.hero.is-hero-lift');
+    if (!hero) return 0;
+    const margin = parseFloat(getComputedStyle(hero).marginBottom) || 0;
+    return margin < 0 ? -margin : 0;
+  }
+
   function measure() {
-    canvas.style.height = '0px';
     if (clip) clip.style.height = '0px';
     const w = Math.max(1, document.documentElement.clientWidth);
     const h = Math.max(1, document.documentElement.scrollHeight, document.body.scrollHeight);
-    return { w, h };
+    // The hero screen moves with a negative margin. The paint stays the
+    // unlifted page height, so that shift does not rescale the field.
+    return { w, h, paintH: h + heroLiftPx() };
   }
 
   function scenePin() {
@@ -1026,24 +1069,24 @@ function bootFlow() {
     return { start, travel };
   }
 
-  function visualDocY(docY) {
-    const pin = scenePin();
-    if (!pin || pin.travel <= 0) return docY;
-    const end = pin.start + pin.travel;
-    if (docY >= end) return docY - pin.travel;
-    if (docY > pin.start) return pin.start;
-    return docY;
-  }
-
   function placeSources() {
+    const lift = heroLiftPx();
     heroSpan = Math.min(0.42, Math.max(0.08, innerHeight / cssH));
     sources.forEach(source => {
       if (source.hero) source.pageY = source.viewY * innerHeight / cssH;
       else if (source.selector) {
         const node = document.querySelector(source.selector);
         if (node) {
-          const docY = node.getBoundingClientRect().top + scrollY + node.offsetHeight * 0.4;
-          source.pageY = Math.min(0.96, Math.max(0.02, visualDocY(docY) / cssH));
+          const docY = node.getBoundingClientRect().top + scrollY + node.offsetHeight * 0.4 + lift;
+          const pin = scenePin();
+          let visual = docY;
+          if (pin && pin.travel > 0) {
+            const start = pin.start + lift;
+            const end = start + pin.travel;
+            if (docY >= end) visual = docY - pin.travel;
+            else if (docY > start) visual = start;
+          }
+          source.pageY = Math.min(0.96, Math.max(0.02, visual / cssH));
         }
       }
       source.home = source.pageY;
@@ -1136,12 +1179,22 @@ function bootFlow() {
     if (fitting) return;
     fitting = true;
     const size = measure();
-    const changed = Math.abs(size.w - cssW) > 2 || Math.abs(size.h - cssH) > 2;
+    const widthChanged = Math.abs(size.w - cssW) > 2;
+    const paintChanged = Math.abs(size.paintH - cssH) > 2;
+    if (!force && cssH > 0 && !widthChanged && !paintChanged) {
+      if (clip) {
+        clip.style.width = size.w + 'px';
+        clip.style.height = size.h + 'px';
+      }
+      fitting = false;
+      return;
+    }
+    const changed = widthChanged || paintChanged;
     cssW = size.w;
-    cssH = size.h;
+    cssH = size.paintH;
     if (clip) {
       clip.style.width = cssW + 'px';
-      clip.style.height = cssH + 'px';
+      clip.style.height = size.h + 'px';
     }
     placeSources();
     if (changed || force || !bufW) {
@@ -1255,12 +1308,19 @@ function bootReveal() {
     const visit = node => {
       if (node.nodeType === 3) {
         const frag = document.createDocumentFragment();
+        let word = null;
         for (const ch of node.textContent) {
           if (ch.trim() === '') {
+            word = null;
             frag.appendChild(document.createTextNode(ch));
             continue;
           }
-          const prev = frag.lastElementChild;
+          if (!word) {
+            word = document.createElement('span');
+            word.className = 'print-word';
+            frag.appendChild(word);
+          }
+          const prev = word.lastElementChild;
           if (prev && prev.classList.contains('print-char') && ',.;:!?…%»'.includes(ch)) {
             prev.textContent += ch;
             continue;
@@ -1271,7 +1331,7 @@ function bootReveal() {
           span.style.setProperty('--i', String(index));
           index += 1;
           span.textContent = ch;
-          frag.appendChild(span);
+          word.appendChild(span);
         }
         node.replaceWith(frag);
         return;
@@ -1877,7 +1937,8 @@ function bootSectionIndexes() {
       if (!section) return;
       if (mobile) {
         const rect = section.getBoundingClientRect();
-        node.style.top = `${rect.top + window.scrollY + 22}px`;
+        const drop = node.dataset.anchor === 'product' || node.dataset.anchor === 'connect' ? 40 : 0;
+        node.style.top = `${rect.top + window.scrollY + 22 + drop}px`;
         return;
       }
       const title = section.querySelector('h2');
@@ -2169,6 +2230,55 @@ function bootHeaderScroll() {
   if (window.scrollY > 4) setRaised(true);
 }
 
+function bootHeroLift() {
+  const hero = document.querySelector('.hero');
+  const product = hero && hero.querySelector('.hero-product');
+  const actions = hero && hero.querySelector('.hero-actions');
+  const copy = hero && hero.querySelector('.hero-copy');
+  if (!product || !actions || !copy) return;
+
+  const narrow = matchMedia('(max-width: 1024px)');
+  let frame = 0;
+
+  function docTop(el) {
+    let y = 0;
+    for (let node = el; node; node = node.offsetParent) y += node.offsetTop;
+    return y;
+  }
+
+  function measure() {
+    if (!narrow.matches) {
+      hero.style.removeProperty('--hero-lift');
+      hero.classList.remove('is-hero-lift');
+      return;
+    }
+    const raw = getComputedStyle(copy).transform;
+    const shift = raw && raw !== 'none' ? new DOMMatrix(raw).f : 0;
+    const gap = docTop(product) - (docTop(actions) + actions.offsetHeight + shift);
+    hero.style.setProperty('--hero-lift', Math.max(0, Math.round(gap - 32)) + 'px');
+  }
+
+  function update() {
+    frame = 0;
+    if (!narrow.matches || reducedMotion.matches) {
+      hero.classList.remove('is-hero-lift');
+      return;
+    }
+    hero.classList.toggle('is-hero-lift', window.scrollY > 4);
+  }
+
+  measure();
+  update();
+  addEventListener('scroll', () => {
+    if (frame) return;
+    frame = requestAnimationFrame(update);
+  }, { passive: true });
+  addEventListener('resize', () => { measure(); update(); });
+  narrow.addEventListener('change', () => { measure(); update(); });
+  reducedMotion.addEventListener('change', () => { measure(); update(); });
+  document.fonts.ready.then(() => { measure(); update(); });
+}
+
 function bootFreshnessDate() {
   const node = document.querySelector('[data-freshness-date]');
   if (!node) return;
@@ -2176,6 +2286,7 @@ function bootFreshnessDate() {
   node.textContent = `Актуально на ${date}`;
 }
 
+bootHeroLift();
 bootFreshnessDate();
 bootMenu();
 bootHeaderScroll();
