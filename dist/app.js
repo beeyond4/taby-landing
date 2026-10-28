@@ -1098,12 +1098,18 @@ function bootFlow() {
     return shift > 0 ? shift : 0;
   }
 
+  function layoutBottom(el) {
+    let y = 0;
+    for (let node = el; node; node = node.offsetParent) y += node.offsetTop;
+    return Math.round(y + el.offsetHeight);
+  }
+
   function pageHeight() {
     const footer = document.querySelector('.footer');
     // The clip is absolute, and a clipped body counts it in scrollHeight.
-    // The footer's border is the real end of the page, including while the
-    // hero margin pulls the following sections up.
-    if (footer) return Math.max(1, Math.round(footer.getBoundingClientRect().bottom + window.scrollY));
+    // offsetTop stays on the layout box while iOS and Telegram move scrollY
+    // with the bottom bar, so the bar cannot stretch the page past the footer.
+    if (footer) return Math.max(1, layoutBottom(footer));
     if (clip) clip.style.height = '0px';
     return Math.max(1, document.documentElement.scrollHeight, document.body.scrollHeight);
   }
@@ -1353,25 +1359,73 @@ function bootFlow() {
 
   let seenLift = -1;
   let clipFit = 0;
+  let clipForce = false;
+  let settleTimer = 0;
+  let trimUseless = false;
+
+  function trimChromeGap(end) {
+    const body = document.body;
+    if (!narrowScreen.matches) {
+      trimUseless = false;
+      body.style.marginBottom = '';
+      return;
+    }
+    const remaining = document.documentElement.scrollHeight - end;
+    const applied = Math.abs(parseFloat(body.style.marginBottom) || 0);
+    if (remaining < -8) {
+      body.style.marginBottom = '';
+      return;
+    }
+    // The bottom bar in Safari and Telegram can leave a sliver past the footer.
+    // Keep only a correction that actually shortens the scroll height.
+    if (trimUseless || remaining < 8 || remaining > 160) return;
+    const next = Math.min(160, applied + Math.round(remaining));
+    body.style.marginBottom = `-${next}px`;
+    if (document.documentElement.scrollHeight - end > remaining - 8) {
+      body.style.marginBottom = applied ? `-${applied}px` : '';
+      trimUseless = true;
+    }
+  }
+
   function fitClip(force) {
-    if (!clip) return;
+    if (!clip || document.body.classList.contains('menu-open') || document.body.classList.contains('dialog-open')) return;
     const lift = heroLiftPx();
     if (!force && lift === seenLift) return;
-    const h = pageHeight();
     seenLift = lift;
-    if (Math.abs((parseFloat(clip.style.height) || 0) - h) < 1) return;
-    clip.style.height = h + 'px';
+    const h = pageHeight();
+    if (Math.abs((parseFloat(clip.style.height) || 0) - h) >= 1) clip.style.height = h + 'px';
+    if (force) trimChromeGap(h);
   }
-  // The hero margin is applied in its own frame. Fit the clip after that,
-  // so the background ends with the footer instead of holding the page open.
-  function requestClipFit() {
+
+  // The hero margin lands in its own frame. Read the footer on the next one,
+  // after iOS has moved the bottom bar, so a fling cannot freeze a stale height.
+  function requestClipFit(force) {
+    if (force) clipForce = true;
     if (clipFit) return;
     clipFit = requestAnimationFrame(() => {
       clipFit = 0;
-      fitClip(false);
+      const forced = clipForce;
+      clipForce = false;
+      requestAnimationFrame(() => fitClip(forced));
     });
   }
-  addEventListener('scroll', requestClipFit, { passive: true });
+
+  function scheduleSettle() {
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => fitClip(true), 180);
+  }
+
+  addEventListener('scroll', () => {
+    requestClipFit(false);
+    scheduleSettle();
+  }, { passive: true });
+  if ('onscrollend' in window) addEventListener('scrollend', () => fitClip(true), { passive: true });
+  if (window.visualViewport) {
+    visualViewport.addEventListener('resize', () => {
+      requestClipFit(true);
+      scheduleSettle();
+    }, { passive: true });
+  }
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitClip(true));
   document.addEventListener('taby-intro-done', () => fitClip(true));
 }
