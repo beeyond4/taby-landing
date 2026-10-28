@@ -1,4 +1,53 @@
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const narrowScreen = matchMedia('(max-width: 1024px)');
+
+function layoutWidth() {
+  return document.documentElement.clientWidth || window.innerWidth;
+}
+
+function onLayoutResize(callback) {
+  let width = layoutWidth();
+  addEventListener('resize', () => {
+    const next = layoutWidth();
+    const widthChanged = Math.abs(next - width) > 2;
+    width = next;
+    if (narrowScreen.matches && !widthChanged) return;
+    callback();
+  });
+}
+
+function bootStableViewport() {
+  const root = document.documentElement;
+  let locked = 0;
+  let width = layoutWidth();
+
+  function read() {
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;height:100svh';
+    root.appendChild(probe);
+    const size = probe.getBoundingClientRect().height;
+    probe.remove();
+    return Math.round(size || window.innerHeight);
+  }
+
+  function lock(force) {
+    const nextWidth = layoutWidth();
+    const widthChanged = Math.abs(nextWidth - width) > 2;
+    width = nextWidth;
+    if (!narrowScreen.matches) {
+      root.style.removeProperty('--stable-svh');
+      locked = 0;
+      return;
+    }
+    if (!force && locked && !widthChanged) return;
+    locked = read();
+    root.style.setProperty('--stable-svh', locked + 'px');
+  }
+
+  lock(true);
+  addEventListener('resize', () => lock(false));
+  narrowScreen.addEventListener('change', () => lock(true));
+}
 
 function decorativeMotion() {
   const saveData = navigator.connection && navigator.connection.saveData;
@@ -428,7 +477,7 @@ function bootProduct() {
   });
 
   let resizeTimer;
-  addEventListener('resize', () => {
+  onLayoutResize(() => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(configureScroll, 100);
   });
@@ -719,7 +768,7 @@ function bootDialog() {
     moveScale(scale * Math.exp(-event.deltaY * 0.01), { x: event.clientX, y: event.clientY });
   }, { passive: false });
 
-  addEventListener('resize', () => {
+  onLayoutResize(() => {
     if (!dialog.open || !screenEl || !naturalW) return;
     const availH = Math.max(scroller.clientHeight, 1);
     fitScale = Math.min(1, scroller.clientWidth / naturalW, availH / naturalH);
@@ -1043,16 +1092,25 @@ function bootFlow() {
   const clip = canvas.parentElement;
 
   function heroLiftPx() {
-    const hero = document.querySelector('.hero.is-hero-lift');
+    const hero = document.querySelector('.hero.is-hero-scrub');
     if (!hero) return 0;
-    const margin = parseFloat(getComputedStyle(hero).marginBottom) || 0;
-    return margin < 0 ? -margin : 0;
+    const shift = parseFloat(hero.style.getPropertyValue('--hero-shift')) || 0;
+    return shift > 0 ? shift : 0;
+  }
+
+  function pageHeight() {
+    const footer = document.querySelector('.footer');
+    // The clip is absolute, and a clipped body counts it in scrollHeight.
+    // The footer's border is the real end of the page, including while the
+    // hero margin pulls the following sections up.
+    if (footer) return Math.max(1, Math.round(footer.getBoundingClientRect().bottom + window.scrollY));
+    if (clip) clip.style.height = '0px';
+    return Math.max(1, document.documentElement.scrollHeight, document.body.scrollHeight);
   }
 
   function measure() {
-    if (clip) clip.style.height = '0px';
     const w = Math.max(1, document.documentElement.clientWidth);
-    const h = Math.max(1, document.documentElement.scrollHeight, document.body.scrollHeight);
+    const h = pageHeight();
     // The hero screen moves with a negative margin. The paint stays the
     // unlifted page height, so that shift does not rescale the field.
     return { w, h, paintH: h + heroLiftPx() };
@@ -1274,8 +1332,16 @@ function bootFlow() {
     }, 80);
   };
   engage();
-  addEventListener('resize', resize);
-  if (typeof ResizeObserver === 'function') new ResizeObserver(resize).observe(document.body);
+  onLayoutResize(resize);
+  if (typeof ResizeObserver === 'function') {
+    let seen = document.documentElement.clientWidth;
+    new ResizeObserver(() => {
+      const width = document.documentElement.clientWidth;
+      if (narrowScreen.matches && Math.abs(width - seen) < 2) return;
+      seen = width;
+      resize();
+    }).observe(document.documentElement);
+  }
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
     cancelAnimationFrame(raf);
@@ -1284,6 +1350,30 @@ function bootFlow() {
   });
   reducedMotion.addEventListener('change', engage);
   addEventListener('scroll', trackScroll, { passive: true });
+
+  let seenLift = -1;
+  let clipFit = 0;
+  function fitClip(force) {
+    if (!clip) return;
+    const lift = heroLiftPx();
+    if (!force && lift === seenLift) return;
+    const h = pageHeight();
+    seenLift = lift;
+    if (Math.abs((parseFloat(clip.style.height) || 0) - h) < 1) return;
+    clip.style.height = h + 'px';
+  }
+  // The hero margin is applied in its own frame. Fit the clip after that,
+  // so the background ends with the footer instead of holding the page open.
+  function requestClipFit() {
+    if (clipFit) return;
+    clipFit = requestAnimationFrame(() => {
+      clipFit = 0;
+      fitClip(false);
+    });
+  }
+  addEventListener('scroll', requestClipFit, { passive: true });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitClip(true));
+  document.addEventListener('taby-intro-done', () => fitClip(true));
 }
 
 function bootReveal() {
@@ -1455,7 +1545,7 @@ function bootReveal() {
   }
 
   let resizeTimer = 0;
-  addEventListener('resize', () => {
+  onLayoutResize(() => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       nodes.forEach(node => {
@@ -1967,12 +2057,16 @@ function bootSectionIndexes() {
   place();
   followScroll();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { place(); followScroll(); });
-  addEventListener('resize', () => { place(); followScroll(); });
+  onLayoutResize(() => { place(); followScroll(); });
   mobileIndex.addEventListener('change', () => { place(); followScroll(); });
   addEventListener('scroll', followScroll, { passive: true });
   document.addEventListener('taby-intro-done', () => { place(); followScroll(); });
   if (window.ResizeObserver) {
-    const observer = new ResizeObserver(() => { place(); followScroll(); });
+    let placeTimer = 0;
+    const observer = new ResizeObserver(() => {
+      clearTimeout(placeTimer);
+      placeTimer = setTimeout(() => { place(); followScroll(); }, 120);
+    });
     observer.observe(document.body);
   }
 }
@@ -2232,12 +2326,22 @@ function bootHeaderScroll() {
 
 function bootHeroLift() {
   const hero = document.querySelector('.hero');
-  const product = hero && hero.querySelector('.hero-product');
+  const premiere = hero && hero.querySelector('.hero-premiere');
+  const product = premiere && premiere.querySelector('.hero-product');
+  const caption = premiere && premiere.querySelector('.hero-caption');
   const actions = hero && hero.querySelector('.hero-actions');
   const copy = hero && hero.querySelector('.hero-copy');
-  if (!product || !actions || !copy) return;
+  if (!premiere || !product || !caption || !actions || !copy) return;
 
   const narrow = matchMedia('(max-width: 1024px)');
+  const viewport = window.visualViewport;
+  let seat = 0;
+  let park = 0;
+  let travel = 0;
+  let shift = 0;
+  let anchor = 0;
+  let lastY = window.scrollY;
+  let seenVH = viewport ? viewport.height : window.innerHeight;
   let frame = 0;
 
   function docTop(el) {
@@ -2246,37 +2350,107 @@ function bootHeroLift() {
     return y;
   }
 
+  function unitHeight(unit) {
+    const probe = document.createElement('div');
+    probe.style.cssText = `position:absolute;visibility:hidden;pointer-events:none;height:100${unit}`;
+    document.documentElement.appendChild(probe);
+    const size = probe.getBoundingClientRect().height;
+    probe.remove();
+    return Math.round(size || 0);
+  }
+
+  function apply(px) {
+    if (!narrow.matches || reducedMotion.matches) {
+      shift = 0;
+      hero.style.removeProperty('--hero-ty');
+      hero.style.removeProperty('--hero-shift');
+      hero.classList.remove('is-hero-scrub');
+      return;
+    }
+    const progress = travel > 0 ? Math.max(0, Math.min(travel, px)) : 0;
+    shift = progress;
+    const collapse = Math.max(0, progress - park);
+    const ty = Math.round(park - progress);
+    hero.style.setProperty('--hero-ty', ty + 'px');
+    hero.style.setProperty('--hero-shift', Math.round(collapse) + 'px');
+    hero.classList.toggle('is-hero-scrub', collapse > 0.5);
+  }
+
   function measure() {
     if (!narrow.matches) {
-      hero.style.removeProperty('--hero-lift');
-      hero.classList.remove('is-hero-lift');
+      seat = 0;
+      park = 0;
+      travel = 0;
+      shift = 0;
+      anchor = 0;
+      hero.style.removeProperty('--hero-ty');
+      hero.style.removeProperty('--hero-shift');
+      hero.classList.remove('is-hero-scrub');
       return;
     }
     const raw = getComputedStyle(copy).transform;
-    const shift = raw && raw !== 'none' ? new DOMMatrix(raw).f : 0;
-    const gap = docTop(product) - (docTop(actions) + actions.offsetHeight + shift);
-    hero.style.setProperty('--hero-lift', Math.max(0, Math.round(gap - 32)) + 'px');
+    const copyShift = raw && raw !== 'none' ? new DOMMatrix(raw).f : 0;
+    const gap = docTop(product) - (docTop(actions) + actions.offsetHeight + copyShift);
+    seat = Math.max(0, Math.round(gap - 32));
+    // lvh includes the URL bar and the bottom bar; svh does not.
+    // The difference is stable, so a toolbar toggle does not move the premiere.
+    park = Math.max(0, Math.min(180, unitHeight('lvh') - unitHeight('svh')));
+    travel = seat + park;
   }
 
-  function update() {
+  function sync() {
     frame = 0;
     if (!narrow.matches || reducedMotion.matches) {
-      hero.classList.remove('is-hero-lift');
+      anchor = 0;
+      lastY = window.scrollY;
+      apply(0);
       return;
     }
-    hero.classList.toggle('is-hero-lift', window.scrollY > 4);
+    const y = window.scrollY;
+    const vh = viewport ? viewport.height : window.innerHeight;
+    // iOS and Telegram shift scrollY by about the chrome height when the
+    // URL bar or bottom bar shows. Absorb only that paired jump. A finger
+    // scroll moves much further than the bar, so the premiere still follows it.
+    if (Math.abs(vh - seenVH) > 1) {
+      const dy = y - lastY;
+      const dvh = vh - seenVH;
+      const chrome = Math.abs(dvh) >= 40 && Math.abs(Math.abs(dy) - Math.abs(dvh)) < 28;
+      if (chrome) anchor = y - shift;
+      seenVH = vh;
+    }
+    lastY = y;
+    apply(y - anchor);
+  }
+
+  function requestSync() {
+    if (frame) return;
+    frame = requestAnimationFrame(sync);
   }
 
   measure();
-  update();
-  addEventListener('scroll', () => {
-    if (frame) return;
-    frame = requestAnimationFrame(update);
-  }, { passive: true });
-  addEventListener('resize', () => { measure(); update(); });
-  narrow.addEventListener('change', () => { measure(); update(); });
-  reducedMotion.addEventListener('change', () => { measure(); update(); });
-  document.fonts.ready.then(() => { measure(); update(); });
+  sync();
+  addEventListener('scroll', requestSync, { passive: true });
+  if (viewport) viewport.addEventListener('resize', requestSync);
+  onLayoutResize(() => {
+    anchor = 0;
+    seenVH = viewport ? viewport.height : window.innerHeight;
+    measure();
+    sync();
+  });
+  narrow.addEventListener('change', () => {
+    anchor = 0;
+    measure();
+    sync();
+  });
+  reducedMotion.addEventListener('change', () => {
+    anchor = 0;
+    measure();
+    sync();
+  });
+  document.fonts.ready.then(() => {
+    measure();
+    sync();
+  });
 }
 
 function bootFreshnessDate() {
@@ -2286,6 +2460,7 @@ function bootFreshnessDate() {
   node.textContent = `Актуально на ${date}`;
 }
 
+bootStableViewport();
 bootHeroLift();
 bootFreshnessDate();
 bootMenu();
