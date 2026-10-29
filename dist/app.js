@@ -2074,27 +2074,30 @@ function bootSectionIndexes() {
   });
 
   const mobileIndex = matchMedia('(max-width: 800px)');
+  const layoutTop = el => {
+    let y = 0;
+    for (let node = el; node; node = node.offsetParent) y += node.offsetTop;
+    return y;
+  };
   const place = () => {
+    if (document.body.classList.contains('menu-open') || document.body.classList.contains('dialog-open')) return;
     const mobile = mobileIndex.matches;
     anchors.forEach(node => {
       const section = document.getElementById(node.dataset.anchor);
       if (!section) return;
       if (mobile) {
-        const rect = section.getBoundingClientRect();
         const drop = node.dataset.anchor === 'product' || node.dataset.anchor === 'connect' ? 40 : 0;
-        node.style.top = `${rect.top + window.scrollY + 22 + drop}px`;
+        node.style.top = `${Math.round(layoutTop(section) + 22 + drop)}px`;
         return;
       }
       const title = section.querySelector('h2');
       if (!title) return;
-      const rect = title.getBoundingClientRect();
       const raise = node.dataset.anchor === 'case' ? 68 : 0;
-      node.style.top = `${rect.top + window.scrollY + rect.height * 0.46 - raise}px`;
+      node.style.top = `${Math.round(layoutTop(title) + title.offsetHeight * 0.46 - raise)}px`;
     });
     if (band && bandHost) {
-      const rect = bandHost.getBoundingClientRect();
-      band.style.top = `${rect.top + window.scrollY}px`;
-      band.style.height = `${rect.height}px`;
+      band.style.top = `${Math.round(layoutTop(bandHost))}px`;
+      band.style.height = `${bandHost.offsetHeight}px`;
     }
   };
 

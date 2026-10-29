@@ -3084,27 +3084,19 @@ body {
     overscroll-behavior-y: none;
   }
   .header.is-hidden,
-  .header.is-raised.is-hidden,
-  .header.is-hidden .wordmark,
-  .header.is-hidden .menu-button,
-  .header.is-raised.is-hidden .wordmark,
-  .header.is-raised.is-hidden .menu-button {
+  .header.is-raised.is-hidden {
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
   }
-  .header.is-hidden,
-  .header.is-raised.is-hidden {
-    top: -120vh;
-  }
 }
 @media (max-width: 1024px) and (prefers-reduced-motion: no-preference) {
   .header {
-    transition: transform .46s var(--ease-out), background-color .28s ease, border-color .28s ease, box-shadow .28s ease, height .46s var(--ease-out), padding .46s var(--ease-out), left .46s var(--ease-out), gap .46s var(--ease-out), opacity .16s ease, visibility 0s, top 0s;
+    transition: transform .46s var(--ease-out), background-color .28s ease, border-color .28s ease, box-shadow .28s ease, top .46s var(--ease-out), height .46s var(--ease-out), padding .46s var(--ease-out), left .46s var(--ease-out), gap .46s var(--ease-out), opacity .22s ease, visibility 0s;
   }
   .header.is-hidden,
   .header.is-raised.is-hidden {
-    transition: opacity .12s ease, visibility 0s linear .12s, top 0s, transform .46s var(--ease-out);
+    transition: transform .46s var(--ease-out), background-color .28s ease, border-color .28s ease, box-shadow .28s ease, top .46s var(--ease-out), height .46s var(--ease-out), padding .46s var(--ease-out), left .46s var(--ease-out), gap .46s var(--ease-out), opacity .2s ease .28s, visibility 0s linear .46s;
   }
 }
 .js .mobile-nav:not([hidden]) {
@@ -3861,8 +3853,8 @@ html.no-js .module-progress>a {
     --screen-drop: 0px;
     --rail-space: 66px;
     position: relative;
-    grid-template-columns: minmax(0,1fr);
-    grid-template-rows: minmax(0,1fr);
+    grid-template-columns: var(--rail-space) minmax(0,1fr);
+    grid-template-rows: auto minmax(0,1fr);
     column-gap: 0;
     align-items: stretch;
   }
@@ -3870,37 +3862,49 @@ html.no-js .module-progress>a {
     position: absolute;
     left: 0;
     top: 0;
+    bottom: 0;
     z-index: 2;
-    width: 52px;
-    height: calc(50% - 4px);
-    align-self: start;
-  }
-  .scroll-ready .module-name,
-  .scroll-ready .product-stage>.product-panels {
     grid-column: 1;
     grid-row: 1;
+    width: var(--rail-space);
+    height: auto;
+    align-self: stretch;
   }
   .scroll-ready .module-name {
-    margin-left: var(--rail-space);
-    width: calc(100% - var(--rail-space));
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    margin: 0;
+    width: auto;
+  }
+  .scroll-ready .product-stage>.product-panels {
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    grid-template-rows: subgrid;
+    min-height: 0;
   }
   .scroll-ready .product-stage .product-panel {
+    grid-column: 1;
+    grid-row: 1 / -1;
     grid-template-columns: minmax(0,1fr);
-    grid-template-rows: minmax(0,1fr) minmax(0,1fr);
+    grid-template-rows: subgrid;
     align-content: stretch;
     align-items: stretch;
-    gap: 8px 0;
+    gap: 16px 0;
+    min-height: 0;
+    height: auto;
   }
   .scroll-ready .product-stage .module-copy {
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
     align-items: stretch;
+    grid-row: 1;
     width: 100%;
     max-width: none;
-    height: 100%;
+    height: auto;
     min-height: 0;
-    padding: calc(var(--name-block) + 8px) 0 0 var(--rail-space);
+    padding: calc(var(--name-block) + 8px) 0 2px var(--rail-space);
     box-sizing: border-box;
   }
   .scroll-ready .product-stage .module-kicker {
@@ -3937,23 +3941,35 @@ html.no-js .module-progress>a {
   .scroll-ready .product-stage .module-figure {
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
+    grid-row: 2;
     width: 100%;
     height: 100%;
     min-height: 0;
     margin: 0;
+    overflow: hidden;
   }
   .scroll-ready .product-stage .module-figure .ui-shot {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
     width: 100%;
-    max-height: 100%;
     min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
   }
   .scroll-ready .product-stage .module-figure .ui-shot>svg {
+    display: block;
     width: 100%;
-    height: auto;
+    height: 100%;
+    min-height: 0;
     max-height: 100%;
+    object-fit: contain;
+    object-position: top center;
   }
   .scroll-ready .product-stage .module-figure figcaption {
+    flex: none;
     margin-top: 8px;
   }
 }
