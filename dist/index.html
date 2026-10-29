@@ -84,7 +84,7 @@
       ]
     }
     </script>
-    <script>document.documentElement.classList.replace("no-js","js");document.documentElement.classList.add("is-booting")</script>
+    <script>document.documentElement.classList.replace("no-js","js");document.documentElement.classList.add("is-booting");if(window.TelegramWebviewProxy||window.TelegramWebviewProxyProto||window.TelegramWebview||/Telegram/i.test(navigator.userAgent))document.documentElement.classList.add("is-telegram")</script>
     <style>
     html{background:#0c101e;color-scheme:dark}
     body{margin:0;background:#0c101e;color:#e5e8f2}
@@ -630,7 +630,7 @@
     <dialog id="image-dialog" aria-labelledby="dialog-title">
       <div class="dialog-header">
         <h2 id="dialog-title">Интерфейс Taby</h2>
-        <button type="button" class="dialog-close" aria-label="Закрыть просмотр">Закрыть <span aria-hidden="true">×</span></button>
+        <button type="button" class="dialog-close" aria-label="Закрыть просмотр"><span class="dialog-close-label">Закрыть</span><span class="dialog-close-mark" aria-hidden="true"></span></button>
       </div>
       <div class="dialog-scroll">
         <div id="dialog-visual"></div>

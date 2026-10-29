@@ -1,5 +1,6 @@
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const narrowScreen = matchMedia('(max-width: 1024px)');
+const telegramWebView = document.documentElement.classList.contains('is-telegram');
 
 function layoutWidth() {
   return document.documentElement.clientWidth || window.innerWidth;
@@ -262,7 +263,6 @@ function bootProduct() {
   const moduleLinks = [...scene.querySelectorAll('[data-module]')];
   let activeIndex = -1;
   let enhanced = false;
-  let sceneStart = 0;
   let scrollStep = 1;
   let scrollFrame = 0;
   let scrollTarget = null;
@@ -293,19 +293,36 @@ function bootProduct() {
     });
     const live = scene.querySelector('.module-name-live');
     if (live) live.textContent = moduleLinks[index].dataset.label || '';
+    const names = scene.querySelector('.module-name');
+    const armNames = names && !names.classList.contains('is-animated');
     scene.querySelectorAll('.module-name span').forEach((span, i) => {
       span.classList.toggle('is-current', i === index);
+      span.classList.toggle('is-before', i < index);
     });
+    if (armNames && !reducedMotion.matches) {
+      requestAnimationFrame(() => names.classList.add('is-animated'));
+    }
+  }
+
+  function stickyTop() {
+    return parseFloat(scene.style.getPropertyValue('--sticky-top')) || 0;
+  }
+
+  function pinTraveled() {
+    return stickyTop() - scene.getBoundingClientRect().top;
   }
 
   function moduleTop(index) {
-    if (enhanced) return sceneStart + index * scrollStep;
+    if (enhanced) {
+      const origin = scene.getBoundingClientRect().top + scrollY - stickyTop();
+      return origin + index * scrollStep;
+    }
     return panels[index].getBoundingClientRect().top + scrollY - 30;
   }
 
   function moduleAtScroll() {
     if (enhanced) {
-      const exact = Math.max(0, Math.min(panels.length - 1, (scrollY - sceneStart) / scrollStep));
+      const exact = Math.max(0, Math.min(panels.length - 1, pinTraveled() / scrollStep));
       return { index: Math.round(exact), exact };
     }
     const line = innerHeight * 0.42;
@@ -422,8 +439,24 @@ function bootProduct() {
         natural = content.getBoundingClientRect().height;
         scale = Math.min(1, available / Math.max(natural, 1));
         content.style.width = `${100 / scale}%`;
+        natural = content.getBoundingClientRect().height;
+        scale = Math.min(1, available / Math.max(natural, 1));
         content.style.transform = `scale(${scale})`;
-        stage.style.height = `${Math.ceil(natural * scale)}px`;
+        // Width and height move together. Measure the painted box, or the
+        // tallest screen (Цели) is clipped by the stage.
+        let visual = content.getBoundingClientRect().height;
+        if (visual > available + 0.5) {
+          scale *= available / visual;
+          content.style.width = `${100 / scale}%`;
+          content.style.transform = `scale(${scale})`;
+          visual = content.getBoundingClientRect().height;
+          if (visual > available + 0.5) {
+            scale *= available / visual;
+            content.style.transform = `scale(${scale})`;
+            visual = content.getBoundingClientRect().height;
+          }
+        }
+        stage.style.height = `${Math.ceil(Math.min(visual, available))}px`;
       } else if (!desktopFit) {
         content.style.height = '100%';
         stage.style.height = `${Math.round(available)}px`;
@@ -434,8 +467,10 @@ function bootProduct() {
         : narrowTop;
       scrollStep = Math.max(480, innerHeight * 0.75);
       scene.style.setProperty('--sticky-top', `${top}px`);
-      scene.style.height = `${stageHeight + (panels.length - 1) * scrollStep}px`;
-      sceneStart = scene.getBoundingClientRect().top + scrollY - top;
+      // Phones unpin the last panel while the rail is still short of 04.
+      // One extra step keeps «Цели» pinned until the rail has filled, then a little longer so the full bar is actually seen.
+      const endHold = desktopFit ? 0 : scrollStep;
+      scene.style.height = `${stageHeight + (panels.length - 1) * scrollStep + endHold}px`;
     } else {
       scene.classList.remove('is-fitted');
       scene.style.height = '';
@@ -1370,13 +1405,14 @@ function bootFlow() {
       body.style.marginBottom = '';
       return;
     }
+    if (telegramWebView) return;
     const remaining = document.documentElement.scrollHeight - end;
     const applied = Math.abs(parseFloat(body.style.marginBottom) || 0);
     if (remaining < -8) {
       body.style.marginBottom = '';
       return;
     }
-    // The bottom bar in Safari and Telegram can leave a sliver past the footer.
+    // Safari's bottom bar can leave a sliver past the footer.
     // Keep only a correction that actually shortens the scroll height.
     if (trimUseless || remaining < 8 || remaining > 160) return;
     const next = Math.min(160, applied + Math.round(remaining));
@@ -1422,7 +1458,7 @@ function bootFlow() {
   if ('onscrollend' in window) addEventListener('scrollend', () => fitClip(true), { passive: true });
   if (window.visualViewport) {
     visualViewport.addEventListener('resize', () => {
-      requestClipFit(true);
+      if (!telegramWebView) requestClipFit(true);
       scheduleSettle();
     }, { passive: true });
   }
@@ -2110,13 +2146,13 @@ function bootSectionIndexes() {
     });
   };
 
-  const followScroll = () => glare();
+  const followScroll = () => { if (!telegramWebView) glare(); };
   place();
   followScroll();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { place(); followScroll(); });
   onLayoutResize(() => { place(); followScroll(); });
   mobileIndex.addEventListener('change', () => { place(); followScroll(); });
-  addEventListener('scroll', followScroll, { passive: true });
+  if (!telegramWebView) addEventListener('scroll', followScroll, { passive: true });
   document.addEventListener('taby-intro-done', () => { place(); followScroll(); });
   if (window.ResizeObserver) {
     let placeTimer = 0;
@@ -2400,6 +2436,9 @@ function bootHeroLift() {
   let lastY = window.scrollY;
   let seenVH = viewport ? viewport.height : window.innerHeight;
   let frame = 0;
+  let chromeDVH = 0;
+  let chromeAt = 0;
+  let holding = false;
 
   function docTop(el) {
     let y = 0;
@@ -2457,6 +2496,10 @@ function bootHeroLift() {
 
   function sync() {
     frame = 0;
+    if (holding) {
+      lastY = window.scrollY;
+      return;
+    }
     if (!narrow.matches || reducedMotion.matches) {
       anchor = 0;
       lastY = window.scrollY;
@@ -2465,16 +2508,38 @@ function bootHeroLift() {
     }
     const y = window.scrollY;
     const vh = viewport ? viewport.height : window.innerHeight;
-    // iOS and Telegram shift scrollY by about the chrome height when the
-    // URL bar or bottom bar shows. Absorb only that paired jump. A finger
-    // scroll moves much further than the bar, so the premiere still follows it.
-    if (Math.abs(vh - seenVH) > 1) {
-      const dy = y - lastY;
-      const dvh = vh - seenVH;
-      const chrome = Math.abs(dvh) >= 40 && Math.abs(Math.abs(dy) - Math.abs(dvh)) < 28;
-      if (chrome) anchor = y - shift;
-      seenVH = vh;
+    const dy = y - lastY;
+    const dvh = vh - seenVH;
+    if (Math.abs(dvh) >= 40) {
+      chromeDVH = dvh;
+      chromeAt = performance.now();
     }
+    // Safari reports the bar and the scroll jump together. Telegram's
+    // webview reports them apart, and that second jump reflows the page.
+    const paired = Math.abs(dvh) >= 40 && Math.abs(Math.abs(dy) - Math.abs(dvh)) < 28;
+    const delayed = telegramWebView && Math.abs(dvh) < 40 && performance.now() - chromeAt < 400 && Math.abs(chromeDVH) >= 40 && Math.abs(dy) > 1 && Math.abs(Math.abs(dy) - Math.abs(chromeDVH)) < 36;
+    if (paired || delayed) {
+      const base = telegramWebView ? lastY : y;
+      anchor = base - shift;
+      seenVH = vh;
+      if (telegramWebView && Math.abs(y - base) > 1) {
+        holding = true;
+        window.scrollTo(0, Math.max(0, base));
+        requestAnimationFrame(() => { holding = false; });
+      }
+      lastY = base;
+      apply(base - anchor);
+      return;
+    }
+    if (telegramWebView && Math.abs(dvh) >= 40 && Math.abs(dy) > 36 && Math.sign(dy) === Math.sign(dvh)) {
+      const progress = shift + (dy - dvh);
+      anchor = y - progress;
+      seenVH = vh;
+      lastY = y;
+      apply(y - anchor);
+      return;
+    }
+    if (Math.abs(dvh) > 1) seenVH = vh;
     lastY = y;
     apply(y - anchor);
   }

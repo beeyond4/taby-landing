@@ -821,17 +821,29 @@ dialog::backdrop {
   margin: 0;
 }
 .dialog-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   background: #1c243a;
   color: var(--text);
   border: 1px solid #34415c;
   border-radius: 25px;
   padding: 10px 15px;
   font-size: 14px;
+  line-height: 1;
 }
-.dialog-close span {
-  font-size: 20px;
-  vertical-align: -1px;
-  margin-left: 10px;
+.dialog-close-label {
+  line-height: 1;
+  transform: translateY(-2px);
+}
+.dialog-close-mark {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background:
+    linear-gradient(currentColor, currentColor) center / 8px 1.5px no-repeat,
+    linear-gradient(currentColor, currentColor) center / 1.5px 8px no-repeat;
+  transform: rotate(45deg);
 }
 .dialog-scroll {
   overflow: auto;
@@ -3586,6 +3598,20 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
 }
+html.is-telegram .index-float {
+  animation: none;
+}
+html.is-telegram .index-glyph {
+  color: rgba(214,222,238,.34);
+  background-image: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  filter: none;
+}
+html.is-telegram .index-glyph::before,
+html.is-telegram .index-glyph::after {
+  content: none;
+}
 html.no-js .section-index {
   position: absolute;
   z-index: 0;
@@ -3774,9 +3800,20 @@ html.no-js .section-index {
   position: absolute;
   inset: 0 auto auto 0;
   white-space: nowrap;
-  opacity: clamp(0,calc(1.35 - abs(var(--i) - var(--module-turn)) * 2),1);
-  transform: translateX(calc((var(--i) - var(--module-turn)) * 1.15em));
-  filter: blur(calc(min(1,abs(var(--i) - var(--module-turn))) * 7px));
+  opacity: 0;
+  transform: translateX(1.15em);
+  filter: blur(7px);
+}
+.module-name span.is-before {
+  transform: translateX(-1.15em);
+}
+.module-name span.is-current {
+  opacity: 1;
+  transform: none;
+  filter: blur(0);
+}
+.module-name.is-animated span {
+  transition: opacity .5s var(--ease-out), transform .5s var(--ease-out), filter .5s var(--ease-out);
 }
 .product-stage>.product-panels {
   grid-column: 2;
@@ -3793,8 +3830,9 @@ html.no-js .section-index {
   grid-row: 1;
   position: relative;
   top: auto;
-  height: auto;
-  align-self: stretch;
+  align-self: start;
+  height: min(100%, calc(100svh - var(--sticky-top, 24px) - 36px));
+  max-height: calc(100svh - var(--sticky-top, 24px) - 36px);
 }
 .scroll-ready .module-name {
   margin: var(--copy-drop) 0 0;
@@ -3805,6 +3843,12 @@ html.no-js .section-index {
 }
 .scroll-ready .product-stage .module-figure {
   margin-top: var(--screen-drop);
+}
+@media (min-width: 901px) {
+  .scroll-ready .product-panel[data-panel="goals"] .module-figure {
+    margin-top: clamp(40px, 5vh, 72px);
+    margin-bottom: 18px;
+  }
 }
 html.no-js .module-name {
   display: none;
@@ -3938,39 +3982,51 @@ html.no-js .module-progress>a {
     max-width: 100%;
     margin: 0;
   }
+  .scroll-ready .product-stage .product-panel[data-panel="sales"] { --sw: 1192; --sh: 795; }
+  .scroll-ready .product-stage .product-panel[data-panel="foodcost"] { --sw: 1192; --sh: 752; }
+  .scroll-ready .product-stage .product-panel[data-panel="stock"] { --sw: 1192; --sh: 879; }
+  .scroll-ready .product-stage .product-panel[data-panel="goals"] { --sw: 1192; --sh: 982; }
   .scroll-ready .product-stage .module-figure {
+    --shot-gap: 30px;
+    container-type: size;
     display: flex;
     flex-direction: column;
+    align-items: center;
     justify-content: flex-start;
     grid-row: 2;
     width: 100%;
     height: 100%;
     min-height: 0;
     margin: 0;
+    padding-left: var(--rail-space);
+    box-sizing: border-box;
     overflow: hidden;
   }
+  .scroll-ready .product-stage .module-figure .ui-shot,
+  .scroll-ready .product-stage .module-figure figcaption {
+    width: min(100cqw, calc((100cqh - var(--shot-gap)) * var(--sw) / var(--sh)));
+  }
   .scroll-ready .product-stage .module-figure .ui-shot {
-    flex: 1 1 auto;
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
-    width: 100%;
+    flex: 0 0 auto;
+    display: block;
+    height: min(calc(100cqh - var(--shot-gap)), calc(100cqw * var(--sh) / var(--sw)));
+    max-height: calc(100cqh - var(--shot-gap));
     min-height: 0;
-    max-height: 100%;
+    padding: 0;
     overflow: hidden;
   }
   .scroll-ready .product-stage .module-figure .ui-shot>svg {
     display: block;
     width: 100%;
     height: 100%;
-    min-height: 0;
-    max-height: 100%;
-    object-fit: contain;
-    object-position: top center;
+    max-width: none;
+    max-height: none;
+    object-fit: fill;
   }
   .scroll-ready .product-stage .module-figure figcaption {
     flex: none;
     margin-top: 8px;
+    text-align: left;
   }
 }
 @media (max-width:900px) and (min-width:640px) {
@@ -3985,6 +4041,7 @@ html.no-js .module-progress>a {
     transform: none;
     filter: none;
     opacity: 0;
+    transition: none;
   }
   .module-name span.is-current {
     opacity: 1;
